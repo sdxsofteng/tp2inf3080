@@ -1,7 +1,11 @@
- import java.sql.*;
- import java.util.Scanner;
+import java.sql.*;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Scanner;
 
- import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 
@@ -12,14 +16,18 @@ public class Main {
     final static String DEMANDE_ID_STATION = "Entrez ID Station: ";
     final static String ERREURE_STATION_NON_TROUVEE = "Station invalide! Veuillez recommencer.";
     final static String DEBUT_TABLEAU = "---------------------------------------------------\n"
-                                       +"| ID |      NOM      |   PRENOM   | PARTI | VOTES |\n"
-                                       +"---------------------------------------------------\n" ;
+            +"| ID |      NOM      |   PRENOM   | PARTI | VOTES |\n"
+            +"---------------------------------------------------\n" ;
     final static String LIGNE_HORIZONTALE_TABLEAU = "---------------------------------------------------\n";
     final static String TABLEAU_VIDE = "|        AUCUN CANDIDAT DANS CETTE STATION.       |\n";
     final static String PRESENTATION_TABLEAU = "\nLISTE DES CANDIDATS DANS: \nStation: %s\nComté: %s\n";
+    final static String AUCUN_CANDIDAT_ENTREE = "Aucun candidat dans cette station/compté. Fin du programme.";
 
     static int idComte = 0;
     static int idStation = 0;
+    static boolean fin = false;
+    static ArrayList<Insertion> valuesAInserer = new ArrayList<>();
+
 
     public static void main(String[] args) {
         JSch jsch = new JSch();
@@ -41,10 +49,13 @@ public class Main {
             try {
                 con = DriverManager.getConnection(url, dbuser, dbpass);
 
-                System.out.println(MESSAGE_ACCUEIL);
-                takeUserInput(con);
-                afficherTableauCandidat(con);
-
+                do {
+                    System.out.println(MESSAGE_ACCUEIL);
+                    takeUserInput(con);
+                    afficherTableauCandidat(con);
+                    afficherCandidatParCandidat(con);
+                    envoyerResultats(con);
+                }while (!fin);
                 con.close();
                 session.disconnect();
 
@@ -63,6 +74,106 @@ public class Main {
             e.printStackTrace();
         }
 
+    }
+
+    public static void envoyerResultats(Connection con) throws SQLException{
+        char input;
+        char input2;
+        Scanner sc = new Scanner(System.in);
+        System.out.print("Confirmer vos entrées (o ou n)?: ");
+        input = sc.next().charAt(0);
+        while (!(input == 'o' || input == 'n')){
+            System.out.println("Choix invalide! Recommencez!");
+            System.out.print("Confirmer vos entrées (o ou n)?: ");
+            input = sc.next().charAt(0);
+        }
+        if (input == 'o'){
+            fin = true;
+            Statement st1 = con.createStatement();
+            for (Insertion e: valuesAInserer) {
+                st1.executeQuery("insert into comptevotes values(" + e.nombresdevotes + ", "
+                        + e.idCandidat + ", " + idStation + ", " + idComte + ")");
+            }
+            System.out.print("Finaliser les résultats (o ou n)?: ");
+            input2 = sc.next().charAt(0);
+            while (!(input2 == 'o' || input2 == 'n')){
+                System.out.println("Choix invalide! Recommencez!");
+                System.out.print("Finaliser les résultats(o ou n)?: ");
+                input2 = sc.next().charAt(0);
+            }
+            if (input == 'o'){
+                Statement st2 = con.createStatement();
+
+                Date date = new Date(System.currentTimeMillis());
+                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                String strdate = formatter.format(date);
+                //TODO
+                st2.executeQuery("update station set heureenvoivotes = \"" + strdate + "\" where comteid = "
+                        + idComte + " and idstation = " + idStation + ";" );
+
+                System.out.print("Quitter le programme (o ou n)?");
+                input = sc.next().charAt(0);
+                while (!(input == 'o' || input == 'n')) {
+                    System.out.println("Choix invalide! Recommencez!");
+                    System.out.print("Quitter le programme (o ou n)?: ");
+                    input = sc.next().charAt(0);
+                }
+                if (input == 'o'){
+                    fin = true;
+                }
+            }
+        }else {
+            valuesAInserer = new ArrayList<>();
+            System.out.print("Quitter le programme (o ou n)?");
+            input = sc.next().charAt(0);
+            while (!(input == 'o' || input == 'n')) {
+                System.out.println("Choix invalide! Recommencez!");
+                System.out.print("Quitter le programme (o ou n)?: ");
+                input = sc.next().charAt(0);
+            }
+            if (input == 'o'){
+                fin = true;
+            }
+        }
+    }
+
+    public static void afficherCandidatParCandidat(Connection con) throws SQLException{
+        //Requete de base pour aller chercher le tableau de candidat pour la station.
+        Statement st0 = con.createStatement();
+        ResultSet candStation = st0.executeQuery("select * from candidat where comteid = " + idComte);
+        if (!candStation.next()){
+            System.out.print(AUCUN_CANDIDAT_ENTREE);
+        }else{
+            do {
+                Scanner inputUser = new Scanner(System.in);
+                int nombreDeVotes = 0;
+                int nombreDeVotesEntres;
+                int idCandidatCourant = candStation.getInt("idcandidat");
+                Statement st1 = con.createStatement();
+                ResultSet nbVotes = st1.executeQuery("select nombresdevotes from comptevotes where idcandidat = "
+                        + idCandidatCourant + " and idstation = " + idStation + " and comteid = " + idComte);
+                if (nbVotes.next()){
+                    do {
+                        nombreDeVotes += nbVotes.getInt("nombresdevotes");
+                    }while (nbVotes.next());
+                }
+                System.out.printf("Candidat:(%s) %s, %s (ID: %d). Nombre de vote courant: %d \n",
+                        candStation.getString("abbreviationparti"),
+                        candStation.getString("nomcandidat"),
+                        candStation.getString("prenomcandidat"),
+                        candStation.getInt("idcandidat"),
+                        nombreDeVotes);
+                System.out.print("Entrez le nombre de votes à ajouter: ");
+                nombreDeVotesEntres = inputUser.nextInt();
+                while (nombreDeVotesEntres <= 0){
+                    System.out.print("Erreure! Le nombre de vote entré doit être supérieur à 0!\n");
+                    System.out.print("Entrez le nombre de votes à ajouter: ");
+                    nombreDeVotesEntres = inputUser.nextInt();
+                }
+
+                valuesAInserer.add(new Insertion(idCandidatCourant, nombreDeVotesEntres));
+            }while (candStation.next());
+        }
     }
 
     public static void afficherTableauCandidat(Connection con) throws SQLException{
@@ -116,7 +227,7 @@ public class Main {
                     candStation.getString("prenomcandidat"),
                     candStation.getString("abbreviationparti"),
                     nombreDeVotes
-                    );
+            );
             System.out.print(LIGNE_HORIZONTALE_TABLEAU);
 
         } while (candStation.next());
