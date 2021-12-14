@@ -21,11 +21,12 @@ public class Main {
     final static String LIGNE_HORIZONTALE_TABLEAU = "---------------------------------------------------\n";
     final static String TABLEAU_VIDE = "|        AUCUN CANDIDAT DANS CETTE STATION.       |\n";
     final static String PRESENTATION_TABLEAU = "\nLISTE DES CANDIDATS DANS: \nStation: %s\nComté: %s\n";
-    final static String AUCUN_CANDIDAT_ENTREE = "Aucun candidat dans cette station/compté. Fin du programme.";
+    final static String AUCUN_CANDIDAT_ENTREE = "Aucun candidat dans cette station/compté.\n";
 
     static int idComte = 0;
     static int idStation = 0;
     static boolean fin = false;
+    static boolean aucunCandidat = false;
     static ArrayList<Insertion> valuesAInserer = new ArrayList<>();
 
 
@@ -50,11 +51,14 @@ public class Main {
                 con = DriverManager.getConnection(url, dbuser, dbpass);
 
                 do {
+                    aucunCandidat = false;
                     System.out.println(MESSAGE_ACCUEIL);
                     takeUserInput(con);
                     afficherTableauCandidat(con);
                     afficherCandidatParCandidat(con);
-                    envoyerResultats(con);
+                    if (!aucunCandidat) {
+                        envoyerResultats(con);
+                    }
                 }while (!fin);
                 con.close();
                 session.disconnect();
@@ -101,16 +105,15 @@ public class Main {
                 System.out.print("Finaliser les résultats(o ou n)?: ");
                 input2 = sc.next().charAt(0);
             }
-            if (input == 'o'){
+            if (input2 == 'o'){
                 Statement st2 = con.createStatement();
 
                 Date date = new Date(System.currentTimeMillis());
-                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd hh:mm");
                 String strdate = formatter.format(date);
-                //TODO
-                st2.executeQuery("update station set heureenvoivotes = \"" + strdate + "\" where comteid = "
-                        + idComte + " and idstation = " + idStation + ";" );
-
+                st2.executeQuery("update station set heureenvoivotes = to_date(\'" + strdate + "\', 'YYYY/MM/DD HH24:MI')" +
+                        " where comteid = " + idComte + " and idstation = " + idStation  + "and heureenvoivotes is null");
+                st2.executeQuery("commit");
                 System.out.print("Quitter le programme (o ou n)?");
                 input = sc.next().charAt(0);
                 while (!(input == 'o' || input == 'n')) {
@@ -143,6 +146,7 @@ public class Main {
         ResultSet candStation = st0.executeQuery("select * from candidat where comteid = " + idComte);
         if (!candStation.next()){
             System.out.print(AUCUN_CANDIDAT_ENTREE);
+            aucunCandidat = true;
         }else{
             do {
                 Scanner inputUser = new Scanner(System.in);
